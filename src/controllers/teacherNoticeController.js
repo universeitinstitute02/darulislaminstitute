@@ -1,21 +1,16 @@
-const Notice = require("../models/Notice");
+const TeacherNotice = require("../models/TeacherNotice");
 
-// Create a new notice for targeted course students
 const createNotice = async (req, res) => {
   try {
-    const instructorId = req.user._id;
-
     if (!req.body.title || !req.body.description || !req.body.course) {
       return res
         .status(400)
         .json({ message: "Mandatory fields cannot be left empty" });
     }
-
-    const newNotice = await Notice.create({
+    const newNotice = await TeacherNotice.create({
       ...req.body,
-      instructor: instructorId,
+      instructor: req.user._id,
     });
-
     res
       .status(201)
       .json({ message: "Notice published successfully", data: newNotice });
@@ -24,28 +19,23 @@ const createNotice = async (req, res) => {
   }
 };
 
-// Update an existing notice matching instructor authority
 const updateNotice = async (req, res) => {
   try {
-    const { id } = req.params;
-    const notice = await Notice.findById(id);
-
-    if (!notice) {
+    const notice = await TeacherNotice.findById(req.params.id);
+    if (!notice)
       return res.status(404).json({ message: "Notice data entry not found" });
-    }
 
     if (notice.instructor.toString() !== req.user._id.toString()) {
       return res
         .status(403)
-        .json({ message: "Unauthorized alteration request on this asset" });
+        .json({ message: "Unauthorized alteration request" });
     }
 
-    const updatedNotice = await Notice.findByIdAndUpdate(
-      id,
+    const updatedNotice = await TeacherNotice.findByIdAndUpdate(
+      req.params.id,
       { $set: req.body },
-      { new: true, runValidators: true },
+      { new: true },
     );
-
     res
       .status(200)
       .json({ message: "Notice updated successfully", data: updatedNotice });
@@ -54,26 +44,18 @@ const updateNotice = async (req, res) => {
   }
 };
 
-// Fetch operational metrics alongside notice data stream
 const getInstructorNotices = async (req, res) => {
   try {
-    const instructorId = req.user._id;
-
-    const notices = await Notice.find({ instructor: instructorId })
+    const notices = await TeacherNotice.find({ instructor: req.user._id })
       .populate("course", "name category banner")
-      .sort({ pinned: -1, createdAt: -1 }); // Prioritize pinned items first
+      .sort({ pinned: -1, createdAt: -1 });
 
-    // Aggregate statistics metrics array
     const stats = {
       totalNotice: notices.length,
       urgent: notices.filter((n) => n.type === "urgent").length,
       pinned: notices.filter((n) => n.pinned === true).length,
     };
-
-    res.status(200).json({
-      stats,
-      data: notices,
-    });
+    res.status(200).json({ stats, data: notices });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -83,25 +65,15 @@ const getStudentNotices = async (req, res) => {
   try {
     const { courseIds } = req.query;
     const queryFilter = {};
-
     if (courseIds) {
-      // Split the comma-separated string from URL into a clean array of ObjectIds
-      // Example input: "id1,id2" -> Output array: ["id1", "id2"]
-      const targetCourseIds = courseIds.split(",").map((id) => id.trim());
-
-      // MongoDB $in operator handles searching multiple values inside an array simultaneously
-      queryFilter.course = { $in: targetCourseIds };
+      queryFilter.course = { $in: courseIds.split(",").map((id) => id.trim()) };
     }
-
-    const notices = await Notice.find(queryFilter)
+    const notices = await TeacherNotice.find(queryFilter)
       .populate("course", "title category banner")
       .populate("instructor", "name profilePicture")
-      .sort({ pinned: -1, createdAt: -1 }); // Pinned notices stay top, rest sorted by latest date
+      .sort({ pinned: -1, createdAt: -1 });
 
-    res.status(200).json({
-      totalCount: notices.length,
-      data: notices,
-    });
+    res.status(200).json({ totalCount: notices.length, data: notices });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -109,22 +81,16 @@ const getStudentNotices = async (req, res) => {
 
 const deleteNotice = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const notice = await Notice.findById(id);
-
-    if (!notice) {
+    const notice = await TeacherNotice.findById(req.params.id);
+    if (!notice)
       return res.status(404).json({ message: "Notice data entry not found" });
-    }
 
     if (notice.instructor.toString() !== req.user._id.toString()) {
       return res
         .status(403)
-        .json({ message: "Unauthorized destruction request on this asset" });
+        .json({ message: "Unauthorized destruction request" });
     }
-
-    await Notice.findByIdAndDelete(id);
-
+    await TeacherNotice.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Notice deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });

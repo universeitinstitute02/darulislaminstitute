@@ -72,16 +72,35 @@ const updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product)
-      return res.status(404).json({ message: "প্রোডাক্ট পাওয়া যায়নি" });
+      return res.status(404).json({ message: "প্রোডাক্ট পাওয়া যায়নি" });
 
-    const updatedData = req.body;
+    const { name, price, category, description, publisher, features, inStock } =
+      req.body;
+
+    const updatedData = {
+      name: name || product.name,
+      price: price || product.price,
+      category: category || product.category,
+      inStock: inStock !== undefined ? inStock === "true" : product.inStock,
+      details: {
+        description: description || product.details?.description,
+        publisher: publisher || product.details?.publisher,
+        features: features
+          ? typeof features === "string"
+            ? JSON.parse(features)
+            : features
+          : product.details?.features,
+      },
+    };
+
     if (req.file) updatedData.image = req.file.path;
 
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
-      updatedData,
-      { new: true },
+      { $set: updatedData },
+      { new: true, runValidators: true },
     );
+
     res.status(200).json(updatedProduct);
   } catch (error) {
     res.status(500).json({ message: error.message });

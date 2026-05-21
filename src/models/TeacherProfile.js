@@ -21,6 +21,9 @@ const teacherProfileSchema = new mongoose.Schema(
     biography: {
       type: String,
     },
+    experience: {
+      type: String,
+    },
     qualifications: {
       type: String,
     },

@@ -4,6 +4,7 @@ const StudentProfile = require("../models/StudentProfile");
 const TeacherProfile = require("../models/TeacherProfile");
 const Notice = require("../models/Notice");
 const ClassLink = require("../models/ClassLink");
+const TeacherNotice = require("../models/TeacherNotice");
 
 const registerUser = async (req, res) => {
   try {
@@ -55,6 +56,7 @@ const registerUser = async (req, res) => {
         teacherNameBn: req.body.teacherNameBn,
         department: req.body.department,
         designation: req.body.designation,
+        experience: req.body.experience,
         qualifications: req.body.qualifications,
       });
     }
@@ -194,7 +196,7 @@ const getMe = async (req, res) => {
       const [studentProfile, noticesFeed, classLinksFeed] = await Promise.all([
         StudentProfile.findOne({ user: userId }),
 
-        Notice.find({})
+        TeacherNotice.find({})
           .populate("course", "name category banner")
           .populate("instructor", "name profilePicture")
           .sort({ pinned: -1, createdAt: -1 }),

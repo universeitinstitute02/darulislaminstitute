@@ -12,28 +12,15 @@ const noticeSchema = new mongoose.Schema(
       required: [true, "Notice description content is required"],
       trim: true,
     },
-    course: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Course",
-      required: [true, "Target course reference is required"],
-    },
-    instructor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Instructor authorization reference is required"],
-    },
     type: {
       type: String,
       enum: ["urgent", "important", "general"],
       default: "general",
     },
-    pinned: {
-      type: Boolean,
-      default: false,
-    },
-    viewsCount: {
-      type: Number,
-      default: 0,
+    category: {
+      type: String,
+      enum: ["holiday", "class", "exam", "admission", "event", "others"],
+      default: "others",
     },
   },
   { timestamps: true },
