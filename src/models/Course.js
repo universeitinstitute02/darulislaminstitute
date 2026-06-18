@@ -11,15 +11,32 @@ const courseSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please add a thumbnail image URL"],
     },
+    // Category
     category: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
       required: true,
+    },
+    // Sub Category
+    subCategory: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: function () {
+        return this.courseCategoryType === "academic";
+      },
+    },
+    // Course Type
+    courseCategoryType: {
+      type: String,
+      required: [true, "Please specify course category type"],
+      enum: ["academic", "general"],
+      default: "general",
     },
     instructor: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       ref: "User",
     },
+    // জেনারেল (নন-অ্যাকাডেমিক) কোর্সের জন্য সরাসরি ফি স্ট্রাকচার:
     price: {
       type: Number,
       default: 0,
@@ -39,7 +56,7 @@ const courseSchema = new mongoose.Schema(
     courseType: {
       type: String,
       required: [true, "Please specify course type"],
-      default: "Online",
+      default: "Online", // Online, Offline
     },
     isPublished: {
       type: Boolean,

@@ -7,6 +7,7 @@ const createCourse = async (req, res) => {
       title,
       category,
       subCategory,
+      courseCategoryType, // academic or general
       duration,
       courseType,
       price,
@@ -36,12 +37,13 @@ const createCourse = async (req, res) => {
       title,
       image: req.file.path,
       category,
-      subCategory,
+      subCategory: courseCategoryType === "academic" ? subCategory : undefined,
+      courseCategoryType: courseCategoryType || "general",
       instructor: req.user._id,
       duration,
       courseType,
-      price: price || 0,
-      oldPrice: oldPrice || 0,
+      price: courseCategoryType === "academic" ? 0 : price || 0,
+      oldPrice: courseCategoryType === "academic" ? 0 : oldPrice || 0,
       label: label || "",
       modules: parsedModules,
       details: parsedDetails,
@@ -55,13 +57,17 @@ const createCourse = async (req, res) => {
 
 const getCourses = async (req, res) => {
   try {
-    let filter = { isPublished: true };
+    // 🔹 সিনিয়র অপ্টিমাইজেশন ফিক্স: কুয়েরি সার্চ সিঙ্কের সুবিধার্থে ডিফ্ল্ট অবজেক্ট ক্লিনআপ
+    let filter = {};
 
     if (req.query.category) {
       filter.category = req.query.category;
     }
     if (req.query.subCategory) {
-      filter.subCategory = req.query.subCategory;
+      filter.subCategory = req.query.subCategory; // 👈 চেকআউট পেজের ড্রপডাউন এটি রিড করবে
+    }
+    if (req.query.courseCategoryType) {
+      filter.courseCategoryType = req.query.courseCategoryType;
     }
     if (req.query.isFeatured) {
       filter.isFeatured = req.query.isFeatured === "true";
@@ -70,12 +76,12 @@ const getCourses = async (req, res) => {
     const limitCount = req.query.limit ? parseInt(req.query.limit) : 0;
 
     const courses = await Course.find(filter)
-      .populate("category", "name image")
+      .populate("category", "name image subCategories")
       .populate("instructor", "name email")
       .sort({ createdAt: -1 })
       .limit(limitCount);
 
-    res.status(200).json(courses);
+    res.status(200).json({ success: true, data: courses }); // 🔹 রেসপন্স স্ট্রাকচার সিঙ্ক
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -83,44 +89,54 @@ const getCourses = async (req, res) => {
 
 const getEducationPageData = async (req, res) => {
   try {
+    const activeCategories = await Category.find({});
+
+    // 🔹 সলিউশন: .lean() যুক্ত করা হয়েছে যাতে মঙ্গুজ স্কিমার টাইপ রিলেশন বাইপাস করে
+    // সরাসরি মঙ্গোডিবি-র র (Raw) অবজেক্ট ফরম্যাট জাভাস্ক্রিপ্ট মেমোরিতে চলে আসে।
+    const allCourses = await Course.find({}).sort({ createdAt: -1 }).lean();
+
     const fixedCategories = [
+      "ফ্রি কোর্স সমূহ",
       "একাডেমিক কোর্স সমূহ",
       "বান্ডেল কোর্স সমূহ",
       "দরসি কিতাব কোর্স সমূহ",
       "প্রিমিয়াম কোর্স সমূহ",
+      "শর্ট কোর্স সমূহ",
     ];
 
-    const groupedData = await Promise.all(
-      fixedCategories.map(async (catName) => {
-        const courses = await Course.find({
-          category: catName,
-          isPublished: true,
-        })
-          .select("title image price oldPrice label details")
-          .sort({ createdAt: -1 })
-          .limit(10);
+    const fixedGroupedData = fixedCategories.map((catName) => {
+      const matchedCourses = allCourses.filter((course) => {
+        if (!course.category) return false;
 
-        return {
-          category: catName,
-          type: "card",
-          courses: courses.map((c) => ({
-            id: c._id,
-            title: c.title,
-            price: c.price,
-            oldPrice: c.oldPrice,
-            label: c.label,
-            image: c.image,
-            details: c.details || {},
-          })),
-        };
-      }),
-    );
+        // ডিরেক্ট স্ট্রিং কনভার্সন ট্র্যাকিং
+        const courseCatStr = String(course.category).trim();
+        return courseCatStr === catName.trim();
+      });
 
-    const filteredData = groupedData.filter(
+      return {
+        categoryName: catName,
+        category: catName,
+        type: "card",
+        courses: matchedCourses.slice(0, 10).map((c) => ({
+          id: c._id,
+          title: c.title,
+          price: c.price,
+          oldPrice: c.oldPrice,
+          label: c.label,
+          image: c.image,
+          details: c.details || {},
+        })),
+      };
+    });
+
+    const validFixedGroups = fixedGroupedData.filter(
       (group) => group.courses.length > 0,
     );
 
-    res.status(200).json(filteredData);
+    res.status(200).json({
+      dynamicCategories: activeCategories || [],
+      courseSections: validFixedGroups,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -164,6 +180,11 @@ const updateCourse = async (req, res) => {
         typeof modules === "string" ? JSON.parse(modules) : modules;
     }
 
+    if (updateData.courseCategoryType === "academic") {
+      updateData.price = 0;
+      updateData.oldPrice = 0;
+    }
+
     const updatedCourse = await Course.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
@@ -179,10 +200,7 @@ const updateCourse = async (req, res) => {
 const deleteCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
-
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
     if (
       course.instructor.toString() !== req.user._id.toString() &&
@@ -194,7 +212,6 @@ const deleteCourse = async (req, res) => {
     }
 
     await course.deleteOne();
-
     res
       .status(200)
       .json({ id: req.params.id, message: "Course removed successfully" });
@@ -206,16 +223,13 @@ const deleteCourse = async (req, res) => {
 const toggleCourseFeatured = async (req, res) => {
   try {
     const { isFeatured } = req.body;
-
     const course = await Course.findByIdAndUpdate(
       req.params.id,
       { isFeatured },
       { new: true, runValidators: true },
     );
 
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
     res.status(200).json({
       success: true,
@@ -253,9 +267,7 @@ const getDynamicCategories = async (req, res) => {
           courseCount: 1,
         },
       },
-      {
-        $sort: { name: 1 },
-      },
+      { $sort: { name: 1 } },
     ]);
 
     res.status(200).json(categories);
@@ -267,7 +279,6 @@ const getDynamicCategories = async (req, res) => {
 const getCoursesByCategoryName = async (req, res) => {
   try {
     const { categoryName } = req.params;
-
     const targetCategory = await Category.findOne({ name: categoryName });
     if (!targetCategory) return res.status(200).json([]);
 
