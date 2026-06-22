@@ -1,10 +1,6 @@
 const PageSection = require("../models/PageSection");
 const HeroSlider = require("../models/HeroSlider");
 
-// ==========================================
-// Page Static content controller (With Dynamic Multi-Image Support)
-// ==========================================
-
 const getSectionContent = async (req, res) => {
   try {
     const { pageName, sectionName } = req.params;
@@ -22,7 +18,6 @@ const updateSectionContent = async (req, res) => {
   try {
     const { pageName, sectionName } = req.params;
 
-    // ফ্রন্টএন্ড থেকে টেক্সট ফিল্ডগুলো JSON স্ট্রিং আকারে আসতে পারে ফর্ম-ডাটার কারণে, তাই পার্স করে নেওয়া হলো
     let contentData =
       typeof req.body.content === "string"
         ? JSON.parse(req.body.content)
@@ -47,10 +42,6 @@ const updateSectionContent = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-// ==========================================
-// Hero Slider CRUD
-// ==========================================
 
 const getPublicSliders = async (req, res) => {
   try {
@@ -79,6 +70,33 @@ const createSlider = async (req, res) => {
   }
 };
 
+const updateSlider = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const slider = await HeroSlider.findById(id);
+
+    if (!slider) {
+      return res.status(404).json({ message: "স্লাইডার পাওয়া যায়নি" });
+    }
+
+    let updateData = { ...req.body };
+
+    if (req.file) {
+      updateData.image = req.file.path;
+    }
+
+    const updatedSlider = await HeroSlider.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true },
+    );
+
+    res.status(200).json(updatedSlider);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const deleteSlider = async (req, res) => {
   try {
     const slider = await HeroSlider.findById(req.params.id);
@@ -96,5 +114,6 @@ module.exports = {
   updateSectionContent,
   getPublicSliders,
   createSlider,
+  updateSlider,
   deleteSlider,
 };

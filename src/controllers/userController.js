@@ -1,6 +1,8 @@
 const User = require("../models/User");
 const TeacherProfile = require("../models/TeacherProfile");
 const StudentProfile = require("../models/StudentProfile");
+const Enrollment = require("../models/Enrollment");
+const Course = require("../models/Course");
 
 // Get All Users with Search & Filter
 const getAllUsers = async (req, res) => {
@@ -266,6 +268,99 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// ==========================================
+// Teacher - My Students Controller (Advanced Server-Side Filtering)
+// ==========================================
+const getTeacherStudents = async (req, res) => {
+  try {
+    const teacherId = req.user._id;
+    const { courseId, courseCategoryType, search } = req.query; // 🎯 সার্ভার সাইড কুয়েরি ডিক্লেয়ারেশন
+
+    // ১. প্রথমে এই শিক্ষকের অধীনে থাকা সমস্ত কোর্স খুঁজে বের করা হলো
+    const teacherCourses = await Course.find({ instructor: teacherId }).select(
+      "_id",
+    );
+    const allCourseIds = teacherCourses.map((course) => course._id);
+
+    // ২. মেইন কুয়েরি অবজেক্ট আর্কিটেকচার
+    let queryConditions = {
+      course: { $in: allCourseIds },
+      status: "approved",
+    };
+
+    // নির্দিষ্ট কোর্স ফিল্টার (যদি শিক্ষক ড্রপডাউন থেকে সিলেক্ট করেন)
+    if (courseId) {
+      queryConditions.course = courseId;
+    }
+
+    // ৩. শিক্ষার্থী পপুলেশন ও মেলাবার জন্য মঙ্গুজ এগ্রিগেশন পাইপলাইন অথবা ডাইনামিক পপুলেশন ম্যাচ মেকানিজম
+    let populateStudentOptions = {
+      path: "student",
+      select: "name email phone profileImage gender",
+    };
+    let populateCourseOptions = {
+      path: "course",
+      select: "title courseCategoryType image price",
+    };
+
+    // যদি কোর্স টাইপ (academic/general) ফিল্টার থাকে
+    if (courseCategoryType) {
+      populateCourseOptions.match = { courseCategoryType };
+    }
+
+    // ৪. ডাটাবেজ কোয়েরি ট্রিগার
+    const enrollments = await Enrollment.find(queryConditions)
+      .populate(populateStudentOptions)
+      .populate(populateCourseOptions)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // ৫. সার্ভার-সাইড অ্যাডভান্সড ফিল্টারিং ও গ্লোবাল সার্চ সিঙ্ক
+    let structuredStudents = enrollments
+      .map((enroll) => {
+        // যদি কোর্স ফিল্টারের সাথে টাইপ না মেলে বা স্টুডেন্ট না থাকে, তবে স্কিপ করবে
+        if (!enroll.student || !enroll.course) return null;
+
+        return {
+          _id: enroll.student._id,
+          name: enroll.student.name,
+          email: enroll.student.email,
+          phone: enroll.student.phone,
+          profileImage: enroll.student.profileImage,
+          gender: enroll.student.gender,
+          role: "student",
+          enrolledCourse: {
+            _id: enroll.course._id,
+            title: enroll.course.title,
+            image: enroll.course.image,
+            courseCategoryType: enroll.course.courseCategoryType,
+          },
+          enrolledAt: enroll.createdAt,
+        };
+      })
+      .filter(Boolean);
+
+    // 🔍 গ্লোবাল সার্চ কুয়েরি ম্যাচিং (নাম, ইমেইল, ফোন নম্বর)
+    if (search && search.trim() !== "") {
+      const searchRegex = new RegExp(search.trim(), "i");
+      structuredStudents = structuredStudents.filter(
+        (student) =>
+          searchRegex.test(student.name) ||
+          searchRegex.test(student.email) ||
+          searchRegex.test(student.phone),
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      count: structuredStudents.length,
+      data: structuredStudents,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -273,4 +368,5 @@ module.exports = {
   adminDeleteUser,
   updateUserRole,
   approveTeacher,
+  getTeacherStudents,
 };

@@ -8,10 +8,10 @@ const {
   updateSectionContent,
   getPublicSliders,
   createSlider,
+  updateSlider,
   deleteSlider,
 } = require("../controllers/contentController");
 
-// Static Section Routes
 router.get("/page/:pageName/section/:sectionName", getSectionContent);
 
 router.put(
@@ -22,9 +22,15 @@ router.put(
   updateSectionContent,
 );
 
-// Hero Slider Routes
 router.get("/sliders", getPublicSliders);
 router.post("/sliders", protect, admin, upload.single("image"), createSlider);
+router.put(
+  "/sliders/:id",
+  protect,
+  admin,
+  upload.single("image"),
+  updateSlider,
+);
 router.delete("/sliders/:id", protect, admin, deleteSlider);
 
 module.exports = router;

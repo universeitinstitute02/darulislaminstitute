@@ -156,13 +156,34 @@ const getEducationPageData = async (req, res) => {
 
 const getTeacherCourses = async (req, res) => {
   try {
-    const courses = await Course.find({ instructor: req.user._id })
+    const teacherId = req.user._id;
+    const { search, courseCategoryType, courseType } = req.query; // ফ্রন্টএন্ড সার্চ প্যারামিটার
+
+    let queryConditions = { instructor: teacherId };
+
+    if (courseCategoryType) {
+      queryConditions.courseCategoryType = courseCategoryType;
+    }
+
+    if (courseType) {
+      queryConditions.courseType = courseType;
+    }
+
+    if (search && search.trim() !== "") {
+      queryConditions.title = { $regex: search.trim(), $options: "i" };
+    }
+
+    const courses = await Course.find(queryConditions)
       .populate("category", "name")
       .sort({ createdAt: -1 });
 
-    res.status(200).json(courses);
+    res.status(200).json({
+      success: true,
+      count: courses.length,
+      data: courses,
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

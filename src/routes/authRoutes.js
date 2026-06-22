@@ -7,9 +7,9 @@ const {
   getMe,
   googleLogin,
   updateProfile,
+  changePassword,
 } = require("../controllers/authController");
 
-// Import middleware
 const { protect } = require("../middlewares/authMiddleware");
 const upload = require("../middlewares/uploadMiddleware");
 
@@ -24,5 +24,7 @@ router.put(
   upload.single("profileImage"),
   updateProfile,
 );
+
+router.put("/change-password", protect, changePassword);
 
 module.exports = router;
