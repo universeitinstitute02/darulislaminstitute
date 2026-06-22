@@ -5,10 +5,13 @@ const {
   getAllAdminNotices,
   updateAdminNotice,
   deleteAdminNotice,
-} = require("../controllers/adminNoticeController");
+  getAdminDashboardOverview,
+} = require("../controllers/adminController");
 const { protect, admin } = require("../middlewares/authMiddleware");
 
 router.get("/", getAllAdminNotices); // Completely Public Route
+
+router.get("/dashboard-overview", protect, admin, getAdminDashboardOverview);
 
 router.post("/admin/add-notice", protect, admin, createAdminNotice);
 router.put("/admin/:id", protect, admin, updateAdminNotice);

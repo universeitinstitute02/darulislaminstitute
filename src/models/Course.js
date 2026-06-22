@@ -20,9 +20,8 @@ const courseSchema = new mongoose.Schema(
     // Sub Category
     subCategory: {
       type: mongoose.Schema.Types.ObjectId,
-      required: function () {
-        return this.courseCategoryType === "academic";
-      },
+      ref: "SubCategory",
+      required: false,
     },
     // Course Type
     courseCategoryType: {
