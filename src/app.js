@@ -18,6 +18,7 @@ const contentRoutes = require("./routes/contentRoutes");
 const enrollmentRoutes = require("./routes/enrollmentRoutes");
 const batchRoutes = require("./routes/batchRoutes");
 const donationRoutes = require("./routes/donationRoutes");
+const quizRoutes = require("./routes/quizRoutes");
 const cors = require("cors");
 
 const app = express();
@@ -68,6 +69,7 @@ app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/batches", batchRoutes);
 app.use("/api/donations", donationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/quiz", quizRoutes);
 
 app.get("/", (req, res) => {
   res.send("Darul Islam server is running...");
