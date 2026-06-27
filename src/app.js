@@ -34,7 +34,8 @@ app.use(
       const allowedOrigins = [
         "http://localhost:3000",
         "https://darulislam2.vercel.app",
-        process.env.FRONTEND_URL,
+        "https://www.darulislaminstitute.com",
+        // process.env.FRONTEND_URL,
       ];
 
       if (!origin || allowedOrigins.includes(origin)) {
