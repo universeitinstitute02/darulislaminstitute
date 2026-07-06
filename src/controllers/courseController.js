@@ -85,14 +85,34 @@ const createCourse = async (req, res) => {
 // Get education page data with categorized course sections & integrated upcoming batches
 const getEducationPageData = async (req, res) => {
   try {
-    const activeCategories = await Category.find({ isActive: true }).lean();
-    const allCourses = await Course.find({ isPublished: true })
+    const { search, category } = req.query;
+
+    // 1. Build Base Filter for Courses Layer
+    let courseFilter = { isPublished: true };
+
+    // Apply name/title search filter if provided
+    if (search && search.trim() !== "") {
+      courseFilter.title = { $regex: search.trim(), $options: "i" };
+    }
+
+    // Apply category filter if provided
+    if (category && category.trim() !== "") {
+      courseFilter.category = category;
+    }
+
+    // Fetch filtered courses from the database
+    const allCourses = await Course.find(courseFilter)
       .sort({ createdAt: -1 })
       .lean();
+
+    // 2. Fetch Active Categories for the Dynamic Sidebar/Header UI
+    // If a specific category filter is active, we can optionally scope this query or keep it intact
+    const activeCategories = await Category.find({ isActive: true }).lean();
 
     const Batch = require("../models/Batch");
     const courseIds = allCourses.map((c) => c._id);
 
+    // 3. Fetch Upcoming Batches corresponding only to the filtered/searched courses
     const allUpcomingBatches = await Batch.find({
       course: { $in: courseIds },
       status: "upcoming",
@@ -103,11 +123,11 @@ const getEducationPageData = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const updatedCategories = activeCategories.map((category) => {
-      if (!category.subCategories || !Array.isArray(category.subCategories))
-        return category;
+    // 4. Map Batches into Dynamic Categories configuration
+    const updatedCategories = activeCategories.map((cat) => {
+      if (!cat.subCategories || !Array.isArray(cat.subCategories)) return cat;
 
-      const updatedSubCategories = category.subCategories.map((sub) => {
+      const updatedSubCategories = cat.subCategories.map((sub) => {
         const targetCourseIds = allCourses
           .filter(
             (c) =>
@@ -126,12 +146,12 @@ const getEducationPageData = async (req, res) => {
       });
 
       return {
-        ...category,
+        ...cat,
         subCategories: updatedSubCategories,
       };
     });
 
-    // Section setup for fixed course groups
+    // 5. Section setup for fixed/hardcoded course groups
     const fixedSections = [
       { key: "free", label: "ফ্রি কোর্স সমূহ" },
       { key: "academic", label: "একাডেমিক কোর্স সমূহ" },
@@ -141,8 +161,20 @@ const getEducationPageData = async (req, res) => {
       { key: "short", label: "শর্ট কোর্স সমূহ" },
     ];
 
-    // Categorize courses by section config (For general courses card layout)
-    const fixedGroupedData = fixedSections.map((section) => {
+    // Filter hardcoded sections if a specific section/category label filter matches from client
+    // For example, if client sends ?category=free or ?category=ফ্রি কোর্স সমূহ
+    const filteredFixedSections = fixedSections.filter((section) => {
+      if (!category) return true; // No filter, return all sections
+
+      const normalizedQuery = category.toLowerCase().trim();
+      return (
+        section.key.toLowerCase() === normalizedQuery ||
+        section.label.toLowerCase().includes(normalizedQuery)
+      );
+    });
+
+    // Categorize remaining courses into authorized segment structures
+    const fixedGroupedData = filteredFixedSections.map((section) => {
       const matchedCourses = allCourses.filter((course) => {
         if (section.key === "academic") {
           return (
@@ -184,11 +216,12 @@ const getEducationPageData = async (req, res) => {
       };
     });
 
-    // Filter out empty course groups
+    // Filter out sections that contain no courses after search/filter injection
     const validFixedGroups = fixedGroupedData.filter(
       (group) => group.courses.length > 0,
     );
 
+    // 6. Return payload directly synchronized with your frontend layout pipelines
     res.status(200).json({
       dynamicCategories: updatedCategories,
       courseSections: validFixedGroups,

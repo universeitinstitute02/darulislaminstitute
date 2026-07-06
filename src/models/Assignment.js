@@ -7,6 +7,11 @@ const assignmentSchema = new mongoose.Schema(
       required: [true, "Assignment title is required"],
       trim: true,
     },
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     course: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",

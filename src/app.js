@@ -19,6 +19,7 @@ const enrollmentRoutes = require("./routes/enrollmentRoutes");
 const batchRoutes = require("./routes/batchRoutes");
 const donationRoutes = require("./routes/donationRoutes");
 const quizRoutes = require("./routes/quizRoutes");
+const teacherNoticeRoutes = require("./routes/teacherNoticeRoutes");
 
 const cors = require("cors");
 
@@ -62,6 +63,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/class-links", classLinkRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/notices", adminRoutes);
+app.use("/api/notices", teacherNoticeRoutes);
 app.use("/api/general-notices", adminRoutes);
 app.use("/api/gallery", galleryRoutes);
 app.use("/api/orders", orderRoutes);

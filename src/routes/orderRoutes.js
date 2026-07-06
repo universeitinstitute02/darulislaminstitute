@@ -10,7 +10,7 @@ const {
 const { protect, admin } = require("../middlewares/authMiddleware");
 
 // cutomer order post api
-router.post("/checkout", protect, placeOrder);
+router.post("/checkout", placeOrder);
 
 // admin pending orders get api
 router.get("/admin/pending", protect, admin, getPendingOrders);

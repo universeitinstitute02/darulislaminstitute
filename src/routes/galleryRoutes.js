@@ -10,11 +10,16 @@ const {
 const { protect, admin } = require("../middlewares/authMiddleware");
 const upload = require("../middlewares/uploadMiddleware");
 
-// Public Endpoint (Landing page bento grid / pagination view)
 router.get("/", getPublicGallery);
 
-// Admin Authorized Operations
-router.post("/admin/add-image", protect, admin, upload.array("image", 10), addGalleryImage);
+// Route handles conditional multipart data arrays seamlessly
+router.post(
+  "/admin/add-image",
+  protect,
+  admin,
+  upload.array("image", 10),
+  addGalleryImage,
+);
 router.put("/admin/:id", protect, admin, updateGalleryText);
 router.get("/admin/my-gallery", protect, admin, getAdminGallery);
 router.delete("/admin/:id", protect, admin, deleteGalleryImage);

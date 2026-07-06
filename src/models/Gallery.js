@@ -4,13 +4,18 @@ const gallerySchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "Gallery image title is required"],
+      required: [true, "Gallery title is required"],
       trim: true,
+    },
+    assetType: {
+      type: String,
+      enum: ["image", "video"],
+      required: [true, "Asset type (image or video) is required"],
     },
     image: [
       {
         type: String,
-        required: [true, "At least one image asset URL is required"],
+        required: [true, "At least one asset URL is required"],
       },
     ],
     event: {

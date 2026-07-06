@@ -3,14 +3,17 @@ const AssignmentSubmission = require("../models/AssignmentSubmission");
 
 const createAssignment = async (req, res) => {
   try {
-    const { title, course, totalMarks, dueDate } = req.body;
+    const { title, description, course, totalMarks, dueDate } = req.body;
 
     if (!title || !course || !totalMarks || !dueDate) {
-      return res.status(400).json({ message: "সবগুলো ফিল্ড পূরণ করা বাধ্যতামূলক" });
+      return res
+        .status(400)
+        .json({ message: "সবগুলো ফিল্ড পূরণ করা বাধ্যতামূলক" });
     }
 
     const newAssignment = await Assignment.create({
       title,
+      description: description || "",
       course,
       totalMarks,
       dueDate,
@@ -35,13 +38,15 @@ const getInstructorSubmissions = async (req, res) => {
       .populate({
         path: "assignment",
         match: { instructor: instructorId },
-        select: "title totalMarks",
+        select: "title description totalMarks",
       })
       .populate("student", "name profilePicture")
       .populate("course", "title category")
       .sort({ createdAt: -1 });
 
-    const filteredSubmissions = submissions.filter((submission) => submission.assignment !== null);
+    const filteredSubmissions = submissions.filter(
+      (submission) => submission.assignment !== null,
+    );
     res.status(200).json(filteredSubmissions);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -57,11 +62,17 @@ const evaluateSubmission = async (req, res) => {
       return res.status(400).json({ message: "Marks allocation is required" });
     }
 
-    const submission = await AssignmentSubmission.findById(submissionId).populate("assignment");
-    if (!submission) return res.status(404).json({ message: "Submission records not found" });
+    const submission =
+      await AssignmentSubmission.findById(submissionId).populate("assignment");
+    if (!submission)
+      return res.status(404).json({ message: "Submission records not found" });
 
-    if (submission.assignment.instructor.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Unauthorized operation on this asset" });
+    if (
+      submission.assignment.instructor.toString() !== req.user._id.toString()
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized operation on this asset" });
     }
 
     if (marksObtained > submission.assignment.totalMarks) {
@@ -75,7 +86,9 @@ const evaluateSubmission = async (req, res) => {
     submission.status = "reviewed";
 
     await submission.save();
-    res.status(200).json({ message: "Submission evaluated successfully", data: submission });
+    res
+      .status(200)
+      .json({ message: "Submission evaluated successfully", data: submission });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -84,7 +97,9 @@ const evaluateSubmission = async (req, res) => {
 const getEvaluationStats = async (req, res) => {
   try {
     const instructorId = req.user._id;
-    const assignments = await Assignment.find({ instructor: instructorId }).select("_id");
+    const assignments = await Assignment.find({
+      instructor: instructorId,
+    }).select("_id");
     const assignmentIds = assignments.map((asm) => asm._id);
 
     const pendingCount = await AssignmentSubmission.countDocuments({
@@ -100,19 +115,17 @@ const getEvaluationStats = async (req, res) => {
 
 const getStudentAssignments = async (req, res) => {
   try {
-    const { course } = req.query; 
+    const { course } = req.query;
     const queryFilter = {};
 
-    // If frontend sends a specific course ID (e.g., ?course=ID), filter by it
     if (course) {
       queryFilter.course = course;
     }
 
-    // Fetch all assignments matching the filter, or all assignments if no filter is passed
     const assignments = await Assignment.find(queryFilter)
       .populate("course", "title category")
       .populate("instructor", "name profilePicture")
-      .sort({ dueDate: 1 }); 
+      .sort({ dueDate: 1 });
 
     res.status(200).json(assignments);
   } catch (error) {
@@ -125,7 +138,9 @@ const submitAssignment = async (req, res) => {
     const { assignmentId, courseId, studentNotes } = req.body;
 
     if (!assignmentId || !courseId) {
-      return res.status(400).json({ message: "Assignment ID and Course ID are required" });
+      return res
+        .status(400)
+        .json({ message: "Assignment ID and Course ID are required" });
     }
 
     const alreadySubmitted = await AssignmentSubmission.findOne({
@@ -134,17 +149,19 @@ const submitAssignment = async (req, res) => {
     });
 
     if (alreadySubmitted) {
-      return res.status(400).json({ message: "আপনি ইতিমধ্যে এই অ্যাসাইনমেন্টটি জমা দিয়েছেন" });
+      return res
+        .status(400)
+        .json({ message: "আপনি ইতিমধ্যে এই অ্যাসাইনমেন্টটি জমা দিয়েছেন" });
     }
 
-    // Support both direct file arrays or string arrays passed from client architecture
     let imagePaths = [];
     if (req.files && req.files.length > 0) {
-      imagePaths = req.files.map(file => file.path);
+      imagePaths = req.files.map((file) => file.path);
     } else if (req.body.submittedImages) {
-      imagePaths = typeof req.body.submittedImages === "string" 
-        ? JSON.parse(req.body.submittedImages) 
-        : req.body.submittedImages;
+      imagePaths =
+        typeof req.body.submittedImages === "string"
+          ? JSON.parse(req.body.submittedImages)
+          : req.body.submittedImages;
     }
 
     const newSubmission = await AssignmentSubmission.create({
@@ -155,7 +172,10 @@ const submitAssignment = async (req, res) => {
       submittedImages: imagePaths,
     });
 
-    res.status(201).json({ message: "আপনার অ্যাসাইনমেন্টটি সফলভাবে জমা হয়েছে", data: newSubmission });
+    res.status(201).json({
+      message: "আপনার অ্যাসাইনমেন্টটি সফলভাবে জমা হয়েছে",
+      data: newSubmission,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -164,11 +184,88 @@ const submitAssignment = async (req, res) => {
 const getStudentResults = async (req, res) => {
   try {
     const results = await AssignmentSubmission.find({ student: req.user._id })
-      .populate("assignment", "title totalMarks dueDate")
+      .populate("assignment", "title description totalMarks dueDate")
       .populate("course", "title")
-      .sort({ updatedAt: -1 }); 
+      .sort({ updatedAt: -1 });
 
     res.status(200).json({ totalSubmitted: results.length, data: results });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getTeacherCreatedAssignments = async (req, res) => {
+  try {
+    const instructorId = req.user._id;
+
+    const assignments = await Assignment.find({ instructor: instructorId })
+      .populate("course", "title name category")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(assignments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// 2. Update a specific assignment asset
+const updateAssignment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, totalMarks, dueDate } = req.body;
+
+    const assignment = await Assignment.findById(id);
+    if (!assignment) {
+      return res
+        .status(404)
+        .json({ message: "অ্যাসাইনমেন্টটি খুঁজে পাওয়া যায়নি" });
+    }
+
+    // Security check: Validate asset ownership
+    if (assignment.instructor.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized operation on this asset" });
+    }
+
+    assignment.title = title || assignment.title;
+    assignment.description =
+      description !== undefined ? description : assignment.description;
+    assignment.totalMarks = totalMarks || assignment.totalMarks;
+    assignment.dueDate = dueDate || assignment.dueDate;
+
+    await assignment.save();
+    res
+      .status(200)
+      .json({ message: "Assignment updated successfully", data: assignment });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// 3. Delete a specific assignment asset completely
+const deleteAssignment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const assignment = await Assignment.findById(id);
+    if (!assignment) {
+      return res
+        .status(404)
+        .json({ message: "অ্যাসাইনমেন্টটি খুঁজে পাওয়া যায়নি" });
+    }
+
+    // Security check: Validate asset ownership
+    if (assignment.instructor.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized operation on this asset" });
+    }
+
+    await assignment.deleteOne();
+    res
+      .status(200)
+      .json({ message: "অ্যাসাইনমেন্টটি সফলভাবে মুছে ফেলা হয়েছে" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -182,4 +279,7 @@ module.exports = {
   getStudentAssignments,
   submitAssignment,
   getStudentResults,
+  getTeacherCreatedAssignments,
+  updateAssignment,
+  deleteAssignment,
 };

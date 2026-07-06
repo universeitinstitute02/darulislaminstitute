@@ -1,4 +1,6 @@
 const ClassLink = require("../models/ClassLink");
+const Enrollment = require("../models/Enrollment");
+const mongoose = require("mongoose");
 
 // Create Class Link
 const createClassLink = async (req, res) => {
@@ -90,27 +92,74 @@ const updateClassLink = async (req, res) => {
 
 const getStudentClassLinks = async (req, res) => {
   try {
-    const { courseIds } = req.query;
-    const queryFilter = {};
+    const studentId = req.user._id;
 
-    if (courseIds) {
-      // Split the comma-separated string from URL into an array of ObjectIds
-      const targetCourseIds = courseIds.split(",").map((id) => id.trim());
-      queryFilter.course = { $in: targetCourseIds };
+    // 1. Fetch all approved course enrollments for this specific student safely
+    const approvedEnrollments = await Enrollment.find({
+      student: studentId,
+      status: "approved",
+    }).lean();
+
+    // If the student has zero approved courses, immediately return success true with empty data array
+    if (!approvedEnrollments || approvedEnrollments.length === 0) {
+      return res.status(200).json({
+        success: true,
+        totalCount: 0,
+        data: [],
+      });
     }
 
-    // MongoDB automatically hides expired documents if TTL index is active
+    // Extract course IDs safely, handling both populated and unpopulated states
+    const authorizedCourseIds = approvedEnrollments
+      .map((enrol) => {
+        if (!enrol.course) return null;
+        return enrol.course._id
+          ? enrol.course._id.toString()
+          : enrol.course.toString();
+      })
+      .filter(Boolean);
+
+    let finalFilterCourseIds = [...authorizedCourseIds];
+
+    // 2. Handle optional sub-filtering from frontend query params (?courseIds=ID1,ID2)
+    const { courseIds } = req.query;
+    if (courseIds && courseIds.trim() !== "") {
+      const requestedIds = courseIds.split(",").map((id) => id.trim());
+      finalFilterCourseIds = requestedIds.filter((id) =>
+        authorizedCourseIds.includes(id),
+      );
+    }
+
+    // Security Gate: If intersection turns out empty due to unauthorized access attempts
+    if (finalFilterCourseIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        totalCount: 0,
+        data: [],
+      });
+    }
+
+    // 3. Convert string array explicitly into Mongoose valid ObjectIds to prevent execution mismatch
+    const mongooseCourseIds = finalFilterCourseIds.map(
+      (id) => new mongoose.Types.ObjectId(id),
+    );
+
+    // Construct target match condition for the database layer query
+    const queryFilter = { course: { $in: mongooseCourseIds } };
+
     const links = await ClassLink.find(queryFilter)
       .populate("course", "title category image")
-      .populate("instructor", "name profilePicture") // Fetching teacher details for frontend UI card
-      .sort({ classDate: 1, startTime: 1 }); // Chronological order: closest class shows first
+      .populate("instructor", "name profilePicture")
+      .sort({ classDate: 1, startTime: 1 });
 
+    // 🎯 Returning exactly matching your application's MERN stack data pipeline structure
     res.status(200).json({
+      success: true,
       totalCount: links.length,
       data: links,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

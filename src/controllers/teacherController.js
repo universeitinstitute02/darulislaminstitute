@@ -126,12 +126,29 @@ const deleteTeacher = async (req, res) => {
 
 const getPublicTeachers = async (req, res) => {
   try {
-    const limitCount = req.query.limit ? parseInt(req.query.limit) : 0;
+    const { search, department, limit } = req.query;
+    const limitCount = limit ? parseInt(limit) : 0;
 
-    const teachers = await TeacherProfile.find({
-      isApproved: true,
-      isFeatured: true,
-    })
+    // Base filter to only show officially approved profiles
+    let queryConditions = { isApproved: true };
+
+    // If a department filter is requested from client architecture
+    if (department && department.trim() !== "") {
+      queryConditions.department = department;
+    }
+
+    // First search the User collections if name query exists to extract valid references
+    if (search && search.trim() !== "") {
+      const User = require("../models/User");
+      const matchedUsers = await User.find({
+        name: { $regex: search.trim(), $options: "i" },
+      }).select("_id");
+
+      const userIds = matchedUsers.map((u) => u._id);
+      queryConditions.user = { $in: userIds };
+    }
+
+    const teachers = await TeacherProfile.find(queryConditions)
       .populate("user", "name email phone profileImage")
       .populate("department", "name")
       .sort({ createdAt: 1 })
@@ -187,7 +204,7 @@ const getDashboardStats = async (req, res) => {
     const uniqueStudentIds = new Set(
       enrollments.map((e) => e.student?.toString()).filter(Boolean),
     );
-    
+
     // Final Response
     res.status(200).json({
       success: true,
@@ -203,7 +220,6 @@ const getDashboardStats = async (req, res) => {
           departmentName: profile?.department?.name || "দ্বীনি বিভাগ",
           isApproved: profile?.isApproved || false,
           teacherId: profile?.teacherId || "",
-  
         },
         stats: {
           todayClasses: todayClassesCount,

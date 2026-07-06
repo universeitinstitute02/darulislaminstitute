@@ -1,26 +1,40 @@
 const Gallery = require("../models/Gallery");
 
-// 1. Add Image to Gallery (Admin Only - Multipart Form Data)
+// 1. Add Asset to Gallery (Admin Only - Multipart Form Data)
 const addGalleryImage = async (req, res) => {
   try {
-    const { title, event } = req.body;
+    const { title, event, assetType, videoUrl } = req.body;
 
-    if (!req.files || req.files.length === 0) {
+    if (!title || !event || !assetType) {
       return res
         .status(400)
-        .json({ message: "কমপক্ষে একটি গ্যালারি ইমেজ প্রয়োজন" });
-    }
-    if (!title || !event) {
-      return res
-        .status(400)
-        .json({ message: "শিরোনাম এবং ইভেন্ট ট্যাগ বাধ্যতামূলক" });
+        .json({
+          message: "শিরোনাম, ইভেন্ট ট্যাগ এবং অ্যাসেট টাইপ বাধ্যতামূলক",
+        });
     }
 
-    const imageUrls = req.files.map((file) => file.path);
+    let imageUrls = [];
+
+    if (assetType === "video") {
+      if (!videoUrl) {
+        return res
+          .status(400)
+          .json({ message: "ভিডিওর লিংক দেওয়া বাধ্যতামূলক" });
+      }
+      imageUrls.push(videoUrl);
+    } else {
+      if (!req.files || req.files.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "কমপক্ষে একটি গ্যালারি ইমেজ প্রয়োজন" });
+      }
+      imageUrls = req.files.map((file) => file.path);
+    }
 
     const newAsset = await Gallery.create({
       title,
       event,
+      assetType,
       image: imageUrls,
     });
 
@@ -45,15 +59,16 @@ const getAdminGallery = async (req, res) => {
 // 3. Get Public Gallery Stream (With Pagination and Optional Filter)
 const getPublicGallery = async (req, res) => {
   try {
-    const { event, page = 1, limit = 10 } = req.query;
+    const { event, assetType, page = 1, limit = 10 } = req.query;
     const queryFilter = {};
 
-    // Dynamic filtering based on event tags if provided
     if (event) {
       queryFilter.event = event;
     }
+    if (assetType) {
+      queryFilter.assetType = assetType;
+    }
 
-    // Pagination calculations
     const skipIndex = (parseInt(page) - 1) * parseInt(limit);
     const totalItems = await Gallery.countDocuments(queryFilter);
 
@@ -73,30 +88,34 @@ const getPublicGallery = async (req, res) => {
   }
 };
 
+// 4. Update Gallery Asset Text Text Blocks
 const updateGalleryText = async (req, res) => {
   try {
-    const { title, event } = req.body;
+    const { title, event, videoUrl } = req.body;
+    const updatePayload = { title, event };
+
+    if (videoUrl) {
+      updatePayload.image = [videoUrl];
+    }
 
     const updatedAsset = await Gallery.findByIdAndUpdate(
       req.params.id,
-      { $set: { title, event } },
+      { $set: updatePayload },
       { new: true, runValidators: true },
     );
 
     if (!updatedAsset)
       return res.status(404).json({ message: "Gallery item not found" });
-    res
-      .status(200)
-      .json({
-        message: "Gallery texts updated successfully",
-        data: updatedAsset,
-      });
+    res.status(200).json({
+      message: "Gallery texts updated successfully",
+      data: updatedAsset,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// 4. Delete Gallery Asset (Admin Only)
+// 5. Delete Gallery Asset (Admin Only)
 const deleteGalleryImage = async (req, res) => {
   try {
     const asset = await Gallery.findById(req.params.id);
