@@ -1,5 +1,6 @@
 const StudentProfile = require("../models/StudentProfile");
 const Batch = require("../models/Batch");
+const Enrollment = require("../models/Enrollment");
 
 const toBanglaNumber = (num) => {
   const banglaDigits = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
@@ -92,7 +93,10 @@ const getEnrolledCourses = async (req, res) => {
   try {
     const studentId = req.user._id;
 
-    const batches = await Batch.find({ enrolledStudents: studentId }).populate({
+    // Already Approved Batch students
+    const activeBatches = await Batch.find({
+      enrolledStudents: studentId,
+    }).populate({
       path: "course",
       populate: {
         path: "instructor",
@@ -100,23 +104,49 @@ const getEnrolledCourses = async (req, res) => {
       },
     });
 
-    const enrolledCoursesMap = new Map();
+    // Get Pending Courses
+    const pendingEnrollments = await Enrollment.find({
+      student: studentId,
+      status: "pending",
+    }).populate({
+      path: "course",
+      populate: {
+        path: "instructor",
+        select: "name email profileImage",
+      },
+    });
 
-    batches.forEach((batch) => {
-      if (
-        batch.course &&
-        !enrolledCoursesMap.has(batch.course._id.toString())
-      ) {
-        enrolledCoursesMap.set(batch.course._id.toString(), batch.course);
+    const coursesMap = new Map();
+
+    // Map Approved Courses
+    activeBatches.forEach((batch) => {
+      if (batch.course && !coursesMap.has(batch.course._id.toString())) {
+        coursesMap.set(batch.course._id.toString(), {
+          ...batch.course.toObject(),
+          enrollmentStatus: "approved",
+        });
       }
     });
 
-    const courses = Array.from(enrolledCoursesMap.values());
+    // Add Pending Courses to Map
+    pendingEnrollments.forEach((enrollment) => {
+      if (
+        enrollment.course &&
+        !coursesMap.has(enrollment.course._id.toString())
+      ) {
+        coursesMap.set(enrollment.course._id.toString(), {
+          ...enrollment.course.toObject(),
+          enrollmentStatus: "pending",
+        });
+      }
+    });
+
+    const allCourses = Array.from(coursesMap.values());
 
     res.status(200).json({
       success: true,
-      count: courses.length,
-      data: courses,
+      count: allCourses.length,
+      data: allCourses,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

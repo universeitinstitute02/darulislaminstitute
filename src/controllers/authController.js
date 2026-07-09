@@ -147,12 +147,10 @@ const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "ভেরিফিকেশন টোকেনটি অবৈধ অথবা মেয়াদোত্তীর্ণ হয়ে গেছে।",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "ভেরিফিকেশন টোকেনটি অবৈধ অথবা মেয়াদোত্তীর্ণ হয়ে গেছে।",
+      });
     }
 
     await User.updateOne(
@@ -279,78 +277,111 @@ const loginUser = async (req, res) => {
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ইমেইল প্রদান করা আবশ্যক।" });
+    }
+
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       return res.status(404).json({
-        message: "এই ইমেইল এড্রেস দিয়ে কোনো অ্যাকাউন্ট রেজিস্টার করা নেই।",
+        success: false,
+        message: "এই ইমেইল এড্রেস দিয়ে কোনো অ্যাকাউন্ট রেজিস্টার করা নেই।",
       });
     }
 
-    // Generate 6 Digit Code or Hex Token (Valid for 15 Minutes)
     const resetToken = crypto.randomBytes(32).toString("hex");
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
-    await user.save();
+    const resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          resetPasswordToken: resetToken,
+          resetPasswordExpires: resetPasswordExpires,
+        },
+      },
+    );
 
     const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
     const htmlContent = `
       <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0;">
-        <h2 style="color: #0B5D3B; text-align: center;">পাসওয়ার্ড রিসেট রিকোয়েস্ট</h2>
-        <p>নিচের বাটনে ক্লিক করে আপনার নতুন পাসওয়ার্ড সেট করে নিন:</p>
+        <h2 style="color: #0B5D3B; text-align: center;">পাসওয়ার্ড রিসেট রিকোয়েস্ট</h2>
+        <p>নিচের বাটনে ক্লিক করে আপনার নতুন পাসওয়ার্ড সেট করে নিন:</p>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" style="background-color: #d97706; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">পাসওয়ার্ড পরিবর্তন করুন</a>
+          <a href="${resetUrl}" style="background-color: #d97706; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">পাসওয়ার্ড পরিবর্তন করুন</a>
         </div>
-        <p style="color: #64748b; font-size: 12px;">এই লিঙ্কটি আগামী ১৫ মিনিটের জন্য কার্যকর থাকবে। আপনি যদি এই রিকোয়েস্ট না করে থাকেন, তবে ইমেইলটি ইগনোর করুন।</p>
+        <p style="color: #64748b; font-size: 12px;">এই লিঙ্কটি আগামী ১৫ মিনিটের জন্য কার্যকর থাকবে। আপনি যদি এই রিকোয়েস্ট না করে থাকেন, তবে ইমেইলটি ইগনোর করুন।</p>
       </div>
     `;
 
     await sendEmail({
       to: user.email,
-      subject: "পাসওয়ার্ড রিসেট লিঙ্ক - দারুল ইসলাম ইনস্টিটিউট",
+      subject: "পাসওয়ার্ড রিসেট লিঙ্ক - দারুল ইসলাম ইনস্টিটিউট",
       htmlContent,
     });
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
-      message: "পাসওয়ার্ড রিসেট করার লিঙ্কটি আপনার ইমেইলে পাঠানো হয়েছে।",
+      message: "পাসওয়ার্ড রিসেট করার লিঙ্কটি আপনার ইমেইলে পাঠানো হয়েছে।",
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Forgot Password Backend Error ->", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 const resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
-      return res
-        .status(400)
-        .json({ message: "টোকেন এবং নতুন পাসওয়ার্ড প্রদান করা আবশ্যক।" });
+    const { token, password } = req.body;
+
+    // 1. Data Input Validation Check
+    if (!token || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "টোকেন এবং নতুন পাসওয়ার্ড প্রদান করা আবশ্যক।",
+      });
     }
 
+    // Find User according to Token and Validations
     const user = await User.findOne({
       resetPasswordToken: token,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user) {
-      return res
-        .status(400)
-        .json({ message: "রিসেট টোকেনটি অবৈধ অথবা এর মেয়াদ শেষ হয়ে গেছে।" });
+      return res.status(400).json({
+        success: false,
+        message:
+          "পাসওয়ার্ড রিসেট টোকেনটি অবৈধ অথবা এটির মেয়াদ শেষ হয়ে গেছে।",
+      });
     }
 
-    user.password = newPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
+    // Hash New Password
+    const bcrypt = require("bcryptjs");
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    res.status(200).json({
+    // Reset and Place new Hashed Password to DB & Clean all tokens
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { password: hashedPassword },
+        $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
+      },
+    );
+
+    return res.status(200).json({
       success: true,
       message:
-        "আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে। নতুন পাসওয়ার্ড দিয়ে লগইন করুন।",
+        "আপনার পাসওয়ার্ডটি সফলভাবে পরিবর্তন করা হয়েছে।",
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Reset Password Backend Error ->", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
