@@ -4,45 +4,70 @@ const StudentProfile = require("../models/StudentProfile");
 const TeacherProfile = require("../models/TeacherProfile");
 const ClassLink = require("../models/ClassLink");
 const TeacherNotice = require("../models/TeacherNotice");
+const sendEmail = require("../utils/sendEmail");
+const crypto = require("crypto");
 
 const registerUser = async (req, res) => {
   try {
     const { email, studentMobile, password, role } = req.body;
 
+    const cleanEmail = email ? email.trim().toLowerCase() : "";
+    const cleanPhone = studentMobile ? studentMobile.trim() : "";
+
     const userExists = await User.findOne({
-      $or: [{ email }, { phone: studentMobile }],
+      $or: [{ email: cleanEmail }, { phone: cleanPhone }],
     });
     if (userExists) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({
+        message:
+          "এই ইমেইল বা মোবাইল নম্বর দিয়ে অলরেডি অ্যাকাউন্ট তৈরি করা আছে।",
+      });
     }
 
     const profileImage = req.file ? req.file.path : null;
 
+    let finalGender = req.body.gender;
+    if (finalGender && typeof finalGender === "string") {
+      finalGender = finalGender.trim().toLowerCase();
+    }
+
+    // Generate Verification Token (Valid for 24 Hours)
+    const vToken = crypto.randomBytes(32).toString("hex");
+    const vTokenExpires = Date.now() + 24 * 60 * 60 * 1000;
+
     const user = await User.create({
-      name: req.body.studentNameEn,
-      phone: studentMobile,
-      email,
+      name: req.body.studentNameEn ? req.body.studentNameEn.trim() : "Unknown",
+      phone: cleanPhone,
+      email: cleanEmail,
       password,
       role: role || "student",
       profileImage,
       birthDate: req.body.birthDate,
-      gender: req.body.gender,
+      gender: finalGender,
       division: req.body.division,
       presentDivision: req.body.presentDivision,
       district: req.body.district,
       permanentAddress: req.body.permanentAddress,
+      verificationToken: vToken,
+      verificationTokenExpires: vTokenExpires,
+      isVerified: false,
     });
 
-    // Create student or teacher profile
     if (user.role === "student") {
       const currentYear = new Date().getFullYear();
+      const lastStudent = await StudentProfile.findOne({
+        studentId: { $regex: `^DIS-${currentYear}-` },
+      })
+        .sort({ studentId: -1 })
+        .select("studentId");
 
-      // Generate next sequential studentId
-      const totalStudentsWithId = await StudentProfile.countDocuments({
-        studentId: { $ne: null },
-      });
+      let nextSequenceNumber = 1;
+      if (lastStudent && lastStudent.studentId) {
+        const lastSequenceStr = lastStudent.studentId.split("-")[2];
+        nextSequenceNumber = parseInt(lastSequenceStr, 10) + 1;
+      }
 
-      const nextSequence = String(totalStudentsWithId + 1).padStart(4, "0");
+      const nextSequence = String(nextSequenceNumber).padStart(4, "0");
       const generatedStudentId = `DIS-${currentYear}-${nextSequence}`;
 
       await StudentProfile.create({
@@ -72,11 +97,122 @@ const registerUser = async (req, res) => {
       });
     }
 
+    // Send Verification Email
+    const verificationUrl = `${process.env.FRONTEND_URL}/auth/verify-email?token=${vToken}`;
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; rounded: 10px;">
+        <h2 style="color: #0B5D3B; text-align: center;">দারুল ইসলাম ইনস্টিটিউট</h2>
+        <p>আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ,</p>
+        <p>আপনার অ্যাকাউন্টটি সক্রিয় করতে নিচের লিঙ্কে ক্লিক করে ইমেইল ভেরিফিকেশন সম্পন্ন করুন:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" style="background-color: #0B5D3B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">ইমেইল ভেরিফাই করুন</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px;">এই লিঙ্কটি আগামী ২৪ ঘণ্টার জন্য কার্যকর থাকবে।</p>
+      </div>
+    `;
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "অ্যাকাউন্ট ভেরিফিকেশন লিঙ্ক - দারুল ইসলাম ইনস্টিটিউট",
+        htmlContent,
+      });
+    } catch (emailErr) {
+      console.error("Email processing error:", emailErr);
+    }
+
     res.status(201).json({
-      _id: user._id,
-      name: user.name,
-      role: user.role,
-      token: generateToken(user._id),
+      success: true,
+      message:
+        "রেজিস্ট্রেশন সফল হয়েছে। আপনার ইমেইলে একটি ভেরিফিকেশন লিঙ্ক পাঠানো হয়েছে।",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res
+        .status(400)
+        .json({ success: false, message: "টোকেন প্রদান করা হয়নি।" });
+    }
+
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationTokenExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "ভেরিফিকেশন টোকেনটি অবৈধ অথবা মেয়াদোত্তীর্ণ হয়ে গেছে।",
+        });
+    }
+
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { isVerified: true },
+        $unset: { verificationToken: "", verificationTokenExpires: "" },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "আপনার ইমেইল সফলভাবে ভেরিফাই করা হয়েছে। এখন লগইন করতে পারেন।",
+    });
+  } catch (error) {
+    console.error("Verify Email Backend Error ->", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ message: "এই ইমেইলে কোনো ইউজার খুঁজে পাওয়া যায়নি।" });
+    }
+    if (user.isVerified) {
+      return res
+        .status(400)
+        .json({ message: "এই অ্যাকাউন্টটি ইতিমধ্যে ভেরিফাইড।" });
+    }
+
+    const vToken = crypto.randomBytes(32).toString("hex");
+    user.verificationToken = vToken;
+    user.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000;
+    await user.save();
+
+    const verificationUrl = `${process.env.FRONTEND_URL}/auth/verify-email?token=${vToken}`;
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0;">
+        <h2 style="color: #0B5D3B; text-align: center;">দারুল ইসলাম ইনস্টিটিউট</h2>
+        <p>আপনার অ্যাকাউন্টটি সক্রিয় করতে নিচের লিঙ্কে ক্লিক করে ইমেইল ভেরিফিকেশন সম্পন্ন করুন:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" style="background-color: #0B5D3B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">ইমেইল ভেরিফাই করুন</a>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      to: user.email,
+      subject: "নতুন ভেরিফিকেশন লিঙ্ক",
+      htmlContent,
+    });
+    res.status(200).json({
+      success: true,
+      message: "নতুন ভেরিফিকেশন লিঙ্ক আপনার ইমেইলে পাঠানো হয়েছে।",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -88,9 +224,9 @@ const loginUser = async (req, res) => {
     const { email: identifier, password } = req.body;
 
     if (!identifier || !password) {
-      return res
-        .status(400)
-        .json({ message: "Please provide both an email/phone and a password" });
+      return res.status(400).json({
+        message: "অনুগ্রহ করে ইমেইল/মোবাইল এবং পাসওয়ার্ড উভয়ই প্রদান করুন।",
+      });
     }
 
     const user = await User.findOne({
@@ -98,17 +234,25 @@ const loginUser = async (req, res) => {
     });
 
     if (user && (await user.matchPassword(password))) {
-      let profileData = null;
+      // Defensive Restriction Check
+      if (!user.isVerified) {
+        return res.status(403).json({
+          needsVerification: true,
+          message:
+            "আপনার অ্যাকাউন্টটি ভেরিফাইড নয়। দয়া করে লগইন করার আগে ইমেইল লিঙ্ক চেক করুন।",
+        });
+      }
 
+      let profileData = null;
       if (user.role === "teacher") {
         profileData = await TeacherProfile.findOne({ user: user._id }).populate(
           "department",
-          "name"
+          "name",
         );
       } else if (user.role === "student") {
         profileData = await StudentProfile.findOne({ user: user._id }).populate(
           "department",
-          "name"
+          "name",
         );
       }
 
@@ -123,8 +267,88 @@ const loginUser = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
-      res.status(401).json({ message: "Invalid email/phone or password" });
+      res.status(401).json({
+        message: "ভুল ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড দেওয়া হয়েছে।",
+      });
     }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "এই ইমেইল এড্রেস দিয়ে কোনো অ্যাকাউন্ট রেজিস্টার করা নেই।",
+      });
+    }
+
+    // Generate 6 Digit Code or Hex Token (Valid for 15 Minutes)
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0;">
+        <h2 style="color: #0B5D3B; text-align: center;">পাসওয়ার্ড রিসেট রিকোয়েস্ট</h2>
+        <p>নিচের বাটনে ক্লিক করে আপনার নতুন পাসওয়ার্ড সেট করে নিন:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #d97706; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">পাসওয়ার্ড পরিবর্তন করুন</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px;">এই লিঙ্কটি আগামী ১৫ মিনিটের জন্য কার্যকর থাকবে। আপনি যদি এই রিকোয়েস্ট না করে থাকেন, তবে ইমেইলটি ইগনোর করুন।</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: user.email,
+      subject: "পাসওয়ার্ড রিসেট লিঙ্ক - দারুল ইসলাম ইনস্টিটিউট",
+      htmlContent,
+    });
+    res.status(200).json({
+      success: true,
+      message: "পাসওয়ার্ড রিসেট করার লিঙ্কটি আপনার ইমেইলে পাঠানো হয়েছে।",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "টোকেন এবং নতুন পাসওয়ার্ড প্রদান করা আবশ্যক।" });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ message: "রিসেট টোকেনটি অবৈধ অথবা এর মেয়াদ শেষ হয়ে গেছে।" });
+    }
+
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message:
+        "আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে। নতুন পাসওয়ার্ড দিয়ে লগইন করুন।",
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -139,7 +363,8 @@ const updateProfile = async (req, res) => {
     delete userUpdates.role;
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ message: "ইউজার খুঁজে পাওয়া যায়নি।" });
 
     if (req.file) {
       userUpdates.profileImage = req.file.path;
@@ -154,7 +379,6 @@ const updateProfile = async (req, res) => {
       typeof profileData === "string" ? JSON.parse(profileData) : profileData;
     let updatedProfile = null;
 
-    // Prevent updating custom ids
     if (parsedProfileData) {
       delete parsedProfileData.studentId;
       delete parsedProfileData.teacherId;
@@ -164,32 +388,32 @@ const updateProfile = async (req, res) => {
       updatedProfile = await StudentProfile.findOneAndUpdate(
         { user: userId },
         { $set: parsedProfileData },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       ).populate("department", "name");
     } else if (user.role === "teacher" && parsedProfileData) {
       updatedProfile = await TeacherProfile.findOneAndUpdate(
         { user: userId },
         { $set: parsedProfileData },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       ).populate("department", "name");
     } else {
       updatedProfile =
         user.role === "teacher"
           ? await TeacherProfile.findOne({ user: userId }).populate(
               "department",
-              "name"
+              "name",
             )
           : await StudentProfile.findOne({ user: userId }).populate(
               "department",
-              "name"
+              "name",
             );
     }
 
     res.status(200).json({
-      message: "Profile updated successfully",
+      message: "প্রোফাইল সফলভাবে আপডেট করা হয়েছে",
       user: {
         ...user._doc,
-        password: (fill = undefined),
+        password: undefined,
         profile: updatedProfile,
       },
     });
@@ -206,23 +430,23 @@ const changePassword = async (req, res) => {
     if (!oldPassword || !newPassword) {
       return res
         .status(400)
-        .json({ message: "Provide both current and new password" });
+        .json({ message: "বর্তমান এবং নতুন উভয় পাসওয়ার্ডই প্রদান করুন।" });
     }
 
     const user = await User.findById(userId);
     if (!user)
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "ইউজার খুঁজে পাওয়া যায়নি।" });
 
     const isMatch = await user.matchPassword(oldPassword);
     if (!isMatch)
       return res
         .status(401)
-        .json({ message: "Current password is incorrect" });
+        .json({ message: "আপনার বর্তমান পাসওয়ার্ডটি সঠিক নয়।" });
 
     user.password = newPassword;
     await user.save();
 
-    res.status(200).json({ message: "Password changed successfully" });
+    res.status(200).json({ message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -232,7 +456,8 @@ const getMe = async (req, res) => {
   try {
     const userId = req.user._id;
     const user = await User.findById(userId).select("-password").lean();
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ message: "ইউজার খুঁজে পাওয়া যায়নি।" });
 
     let profileData = null;
     let extraData = {};
@@ -242,7 +467,6 @@ const getMe = async (req, res) => {
         .populate("department", "name")
         .lean();
     } else if (user.role === "student") {
-      // Get student profile and feeds
       const [studentProfile, noticesFeed, classLinksFeed] = await Promise.all([
         StudentProfile.findOne({ user: userId })
           .populate("department", "name")
@@ -260,17 +484,12 @@ const getMe = async (req, res) => {
       ]);
 
       profileData = studentProfile;
-      extraData = {
-        notices: noticesFeed,
-        classLinks: classLinksFeed,
-      };
+      extraData = { notices: noticesFeed, classLinks: classLinksFeed };
     }
 
-    res.status(200).json({
-      ...user,
-      profile: profileData || null,
-      ...extraData,
-    });
+    res
+      .status(200)
+      .json({ ...user, profile: profileData || null, ...extraData });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -284,16 +503,15 @@ const googleLogin = async (req, res) => {
     if (!user) {
       const randomPassword =
         Math.random().toString(36).slice(-15) + process.env.JWT_SECRET;
-
       user = await User.create({
         name,
         email,
         phone: `G-${Date.now()}`,
         password: randomPassword,
         role: "student",
+        isVerified: true, // Google login auto-verified
       });
 
-      // Create new student ID for google login user
       const currentYear = new Date().getFullYear();
       const totalStudentsWithId = await StudentProfile.countDocuments({
         studentId: { $ne: null },
@@ -311,12 +529,12 @@ const googleLogin = async (req, res) => {
     if (user.role === "student") {
       profileData = await StudentProfile.findOne({ user: user._id }).populate(
         "department",
-        "name"
+        "name",
       );
     } else if (user.role === "teacher") {
       profileData = await TeacherProfile.findOne({ user: user._id }).populate(
         "department",
-        "name"
+        "name",
       );
     }
 
@@ -335,7 +553,11 @@ const googleLogin = async (req, res) => {
 
 module.exports = {
   registerUser,
+  verifyEmail,
+  resendVerification,
   loginUser,
+  forgotPassword,
+  resetPassword,
   getMe,
   googleLogin,
   updateProfile,
