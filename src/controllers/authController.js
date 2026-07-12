@@ -376,8 +376,7 @@ const resetPassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        "আপনার পাসওয়ার্ডটি সফলভাবে পরিবর্তন করা হয়েছে।",
+      message: "আপনার পাসওয়ার্ডটি সফলভাবে পরিবর্তন করা হয়েছে।",
     });
   } catch (error) {
     console.error("Reset Password Backend Error ->", error);
@@ -582,6 +581,132 @@ const googleLogin = async (req, res) => {
   }
 };
 
+const manualUserAddByAdmin = async (req, res) => {
+  try {
+    const { email, studentMobile, password, role } = req.body;
+
+    const cleanEmail = email ? email.trim().toLowerCase() : "";
+    const cleanPhone = studentMobile ? studentMobile.trim() : "";
+
+    const userExists = await User.findOne({
+      $or: [{ email: cleanEmail }, { phone: cleanPhone }],
+    });
+
+    if (userExists) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "এই ইমেইল বা মোবাইল নম্বর দিয়ে অলরেডি অ্যাকাউন্ট তৈরি করা আছে ভাই।",
+      });
+    }
+
+    const profileImage = req.file ? req.file.path : null;
+
+    let finalGender = req.body.gender;
+    if (finalGender && typeof finalGender === "string") {
+      finalGender = finalGender.trim().toLowerCase();
+    }
+
+    // ১. নিউ ইউজার ইনস্ট্যান্স তৈরি
+    const newUser = new User({
+      name: req.body.studentNameEn ? req.body.studentNameEn.trim() : "Unknown",
+      phone: cleanPhone,
+      email: cleanEmail,
+      password,
+      role: role || "student",
+      profileImage,
+      birthDate: req.body.birthDate,
+      gender: finalGender,
+      district: req.body.district,
+      permanentAddress: req.body.permanentAddress,
+      isVerified: true,
+    });
+
+    await newUser.save();
+
+    await User.updateOne(
+      { _id: newUser._id },
+      {
+        $set: {
+          isVerified: true,
+          status: "approved",
+        },
+      },
+    );
+
+    const currentYear = new Date().getFullYear();
+
+    if (newUser.role === "student") {
+      const lastStudent = await StudentProfile.findOne({
+        studentId: { $regex: `^DIS-${currentYear}-` },
+      })
+        .sort({ studentId: -1 })
+        .select("studentId");
+
+      let nextSequenceNumber = 1;
+      if (lastStudent && lastStudent.studentId) {
+        const lastSequenceStr = lastStudent.studentId.split("-")[2];
+        nextSequenceNumber = parseInt(lastSequenceStr, 10) + 1;
+      }
+
+      const nextSequence = String(nextSequenceNumber).padStart(4, "0");
+      const generatedStudentId = `DIS-${currentYear}-${nextSequence}`;
+
+      await StudentProfile.create({
+        user: newUser._id,
+        studentId: generatedStudentId,
+        studentNameBn: req.body.studentNameBn,
+        classLevel: req.body.classLevel,
+        department: req.body.department,
+        fatherName: req.body.fatherName,
+        fatherMobile: req.body.fatherMobile,
+        fatherJob: req.body.fatherJob,
+        motherName: req.body.motherName,
+        motherMobile: req.body.motherMobile,
+        motherJob: req.body.motherJob,
+        isApproved: true,
+      });
+    }
+
+    if (newUser.role === "teacher") {
+      const lastTeacher = await TeacherProfile.findOne({
+        teacherId: { $regex: `^DIT-${currentYear}-` },
+      })
+        .sort({ teacherId: -1 })
+        .select("teacherId");
+
+      let nextTeacherSeqNumber = 1;
+      if (lastTeacher && lastTeacher.teacherId) {
+        const lastTeacherSeqStr = lastTeacher.teacherId.split("-")[2];
+        nextTeacherSeqNumber = parseInt(lastTeacherSeqStr, 10) + 1;
+      }
+
+      const nextTeacherSeq = String(nextTeacherSeqNumber).padStart(3, "0");
+      const generatedTeacherId = `DIT-${currentYear}-${nextTeacherSeq}`;
+
+      await TeacherProfile.create({
+        user: newUser._id,
+        teacherId: generatedTeacherId,
+        teacherNameBn: req.body.teacherNameBn,
+        department: req.body.department,
+        designation: req.body.designation,
+        qualifications: req.body.qualifications,
+        biography: req.body.biography || "",
+        experience: req.body.experience,
+        isApproved: true,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `${newUser.role === "teacher" ? "শিক্ষক" : "শিক্ষার্থী"} অ্যাকাউন্টটি সফলভাবে তৈরি এবং সক্রিয় করা হয়েছে।`,
+    });
+  } catch (error) {
+    console.error("Manual User Add Error ->", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   verifyEmail,
@@ -593,4 +718,5 @@ module.exports = {
   googleLogin,
   updateProfile,
   changePassword,
+  manualUserAddByAdmin,
 };

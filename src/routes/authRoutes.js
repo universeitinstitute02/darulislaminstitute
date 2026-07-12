@@ -12,11 +12,13 @@ const {
   googleLogin,
   updateProfile,
   changePassword,
+  manualUserAddByAdmin,
 } = require("../controllers/authController");
 
 const { protect } = require("../middlewares/authMiddleware");
 const upload = require("../middlewares/uploadMiddleware");
 
+router.post("/admin/add-user", protect, upload.single("profileImage"), manualUserAddByAdmin);
 router.post("/register", upload.single("profileImage"), registerUser);
 router.post("/verify-email", verifyEmail);
 router.post("/resend-verification", resendVerification);

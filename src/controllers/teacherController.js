@@ -126,11 +126,15 @@ const deleteTeacher = async (req, res) => {
 
 const getPublicTeachers = async (req, res) => {
   try {
-    const { search, department, limit } = req.query;
+    const { search, department, limit, featured } = req.query;
     const limitCount = limit ? parseInt(limit) : 0;
 
     // Base filter to only show officially approved profiles
     let queryConditions = { isApproved: true };
+
+    if (featured === "true") {
+      queryConditions.isFeatured = true;
+    }
 
     // If a department filter is requested from client architecture
     if (department && department.trim() !== "") {
