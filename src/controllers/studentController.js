@@ -33,11 +33,39 @@ const calculateAgeBn = (birthDateStr) => {
 const getPublicStudents = async (req, res) => {
   try {
     const limitCount = req.query.limit ? parseInt(req.query.limit) : 0;
-    const { search, classLevel } = req.query;
+    const searchTerm = req.query.query || req.query.search;
+    const { classLevel, featured } = req.query;
 
-    let profileFilter = { isFeatured: true };
+    let profileFilter = {};
+
+    // If Specificly Want Featured Students
+    if (featured === "true") {
+      profileFilter.isFeatured = true;
+    }
+
     if (classLevel) profileFilter.classLevel = classLevel;
-    if (search) profileFilter.studentNameBn = { $regex: search, $options: "i" };
+
+    // User Collection Search Logic with English Names
+    if (searchTerm && searchTerm.trim() !== "") {
+      const cleanSearch = searchTerm.trim();
+      const User = require("../models/User");
+
+      const matchedUsers = await User.find({
+        $or: [
+          { name: { $regex: cleanSearch, $options: "i" } },
+          { phone: { $regex: cleanSearch, $options: "i" } },
+        ],
+      }).select("_id");
+
+      const userIds = matchedUsers.map((u) => u._id);
+
+      // Name, StudentID Matching Conditions
+      profileFilter.$or = [
+        { studentNameBn: { $regex: cleanSearch, $options: "i" } },
+        { studentId: { $regex: cleanSearch, $options: "i" } },
+        { user: { $in: userIds } },
+      ];
+    }
 
     const students = await StudentProfile.find(profileFilter)
       .populate(
@@ -55,13 +83,21 @@ const getPublicStudents = async (req, res) => {
         return {
           ...studentObj,
           address: studentObj.user?.permanentAddress || "তথ্য নেই",
-          age: calculateAgeBn(studentObj.user?.birthDate),
+          age:
+            typeof calculateAgeBn === "function"
+              ? calculateAgeBn(studentObj.user?.birthDate)
+              : "N/A",
         };
       });
 
-    res.status(200).json(resolvedStudents);
+    res.status(200).json({
+      success: true,
+      count: resolvedStudents.length,
+      data: resolvedStudents,
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Fetch Students Backend Error ->", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

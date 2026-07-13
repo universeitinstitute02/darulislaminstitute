@@ -129,27 +129,30 @@ const getPublicTeachers = async (req, res) => {
     const { search, department, limit, featured } = req.query;
     const limitCount = limit ? parseInt(limit) : 0;
 
-    // Base filter to only show officially approved profiles
     let queryConditions = { isApproved: true };
 
     if (featured === "true") {
       queryConditions.isFeatured = true;
     }
 
-    // If a department filter is requested from client architecture
     if (department && department.trim() !== "") {
       queryConditions.department = department;
     }
 
-    // First search the User collections if name query exists to extract valid references
     if (search && search.trim() !== "") {
+      const cleanSearch = search.trim();
       const User = require("../models/User");
+
       const matchedUsers = await User.find({
-        name: { $regex: search.trim(), $options: "i" },
+        name: { $regex: cleanSearch, $options: "i" },
       }).select("_id");
 
       const userIds = matchedUsers.map((u) => u._id);
-      queryConditions.user = { $in: userIds };
+
+      queryConditions.$or = [
+        { teacherId: { $regex: cleanSearch, $options: "i" } },
+        { user: { $in: userIds } },
+      ];
     }
 
     const teachers = await TeacherProfile.find(queryConditions)
@@ -160,6 +163,7 @@ const getPublicTeachers = async (req, res) => {
 
     res.status(200).json(teachers);
   } catch (error) {
+    console.error("Fetch Teachers Backend Error ->", error);
     res.status(500).json({ message: error.message });
   }
 };
