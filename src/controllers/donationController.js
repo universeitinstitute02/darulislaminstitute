@@ -187,7 +187,7 @@ const createDonation = async (req, res) => {
       phone,
       amount,
       method,
-      campaignSlug,
+      campaignId,
       senderNumber,
       address,
       trxId,
@@ -199,9 +199,9 @@ const createDonation = async (req, res) => {
         .json({ message: "Invalid donation amount specified" });
     }
 
-    if (campaignSlug && campaignSlug !== "general") {
+    if (campaignId && campaignId !== "general") {
       const campaignExists = await DonationCampaign.findOne({
-        slug: campaignSlug,
+        _id: campaignId,
         isActive: true,
       });
       if (!campaignExists) {
@@ -232,7 +232,7 @@ const createDonation = async (req, res) => {
       phone,
       amount: Number(amount),
       method,
-      campaignSlug: campaignSlug || "general",
+      campaignId: campaignId || "general",
       senderNumber: method !== "bank" ? senderNumber : undefined,
       trxId: method !== "bank" ? trxId.trim() : undefined,
       address,
