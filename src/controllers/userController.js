@@ -59,6 +59,7 @@ const getAllUsers = async (req, res) => {
           return profile ? { ...user._doc, profileData: profile } : null;
         })
         .filter((user) => user !== null);
+        
     } else if (role === "student") {
       let studentProfileFilter = { user: { $in: userIds } };
 
@@ -79,12 +80,33 @@ const getAllUsers = async (req, res) => {
         "name",
       );
 
+      const enrollments = await Enrollment.find({
+        student: { $in: userIds },
+        status: "approved",
+      }).populate("course", "title");
+
       users = users
         .map((user) => {
           const profile = profiles.find(
             (p) => p.user.toString() === user._id.toString(),
           );
-          return profile ? { ...user._doc, profileData: profile } : null;
+
+          if (!profile) return null;
+
+          const studentEnrollments = enrollments.filter(
+            (e) => e.student && e.student.toString() === user._id.toString()
+          );
+          
+          const enrolledCourses = studentEnrollments
+            .map((e) => e.course ? e.course.title : null)
+            .filter(Boolean);
+
+          const updatedProfile = {
+            ...profile._doc,
+            enrolledCourses: enrolledCourses,
+          };
+
+          return { ...user._doc, profileData: updatedProfile };
         })
         .filter((user) => user !== null);
     }
