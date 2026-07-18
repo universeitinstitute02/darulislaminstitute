@@ -40,7 +40,11 @@ const createClassLink = async (req, res) => {
 const getClassLinks = async (req, res) => {
   try {
     const links = await ClassLink.find({ instructor: req.user._id })
-      .populate("course", "title category image")
+      .populate({
+        path: "course",
+        select: "title category image",
+        populate: { path: "category", select: "name" },
+      })
       .sort({ classDate: 1 });
 
     res.status(200).json(links);

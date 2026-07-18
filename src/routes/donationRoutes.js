@@ -25,7 +25,7 @@ router.get("/campaigns", getPublicCampaigns);
 // ==========================================
 router.post("/admin/campaigns", protect, admin, upload.single("image"), createCampaign);
 router.get("/admin/campaigns", protect, admin, getAdminCampaigns);
-router.put("/admin/campaigns/:id", protect, admin, updateCampaign);
+router.put("/admin/campaigns/:id", protect, admin, upload.single("image"), updateCampaign);
 router.delete("/admin/campaigns/:id", protect, admin, deleteCampaign);
 
 // ==========================================

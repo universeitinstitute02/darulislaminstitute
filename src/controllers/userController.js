@@ -137,23 +137,69 @@ const getUserById = async (req, res) => {
 const adminUpdateUser = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { name, email, role } = req.body;
-    let { profileData } = req.body;
+
+    let bodyData = req.body;
+    if (typeof req.body === "string") {
+      try {
+        bodyData = JSON.parse(req.body);
+      } catch (e) {
+        bodyData = {};
+      }
+    }
 
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (name) user.name = name;
-    if (email) user.email = email;
-    if (role) user.role = role;
+    const allowedUserFields = [
+      "name",
+      "email",
+      "phone",
+      "role",
+      "isActive",
+      "gender",
+      "permanentAddress",
+    ];
+    let userUpdateData = {};
+
+    Object.keys(bodyData).forEach((key) => {
+      if (allowedUserFields.includes(key) && bodyData[key] !== undefined) {
+        userUpdateData[key] = bodyData[key];
+      }
+    });
+
+    if (userUpdateData.email && userUpdateData.email !== user.email) {
+      const existingEmail = await User.findOne({ email: userUpdateData.email });
+      if (existingEmail) {
+        return res
+          .status(400)
+          .json({ message: "Email is already in use by another user." });
+      }
+    }
+
+    if (userUpdateData.phone && userUpdateData.phone !== user.phone) {
+      const existingPhone = await User.findOne({ phone: userUpdateData.phone });
+      if (existingPhone) {
+        return res
+          .status(400)
+          .json({ message: "Phone number is already in use by another user." });
+      }
+    }
 
     if (req.file) {
-      user.profileImage = req.file.path;
+      userUpdateData.profileImage = req.file.path || req.file.location;
     }
-    await user.save();
 
+    if (Object.keys(userUpdateData).length > 0) {
+      await User.findByIdAndUpdate(
+        userId,
+        { $set: userUpdateData },
+        { returnDocument: "after", runValidators: true },
+      );
+    }
+
+    let profileData = bodyData.profileData;
     if (profileData && typeof profileData === "string") {
       try {
         profileData = JSON.parse(profileData);
@@ -164,18 +210,57 @@ const adminUpdateUser = async (req, res) => {
       }
     }
 
-    if (user.role === "teacher" && profileData) {
-      await TeacherProfile.findOneAndUpdate(
-        { user: userId },
-        { $set: profileData },
-        { new: true, runValidators: true, upsert: true },
-      );
-    } else if (user.role === "student" && profileData) {
-      await StudentProfile.findOneAndUpdate(
-        { user: userId },
-        { $set: profileData },
-        { new: true, runValidators: true, upsert: true },
-      );
+    if (profileData) {
+      if (
+        profileData.department === "null" ||
+        profileData.department === "" ||
+        !profileData.department
+      ) {
+        delete profileData.department;
+      }
+
+      const allowedProfileFields = [
+        "teacherNameBn",
+        "designation",
+        "experience",
+        "qualifications",
+        "department",
+        "studentNameBn",
+        "classLevel",
+        "fatherName",
+        "fatherMobile",
+        "motherName",
+        "motherMobile",
+        "isFeatured",
+      ];
+      let filteredProfileData = {};
+
+      Object.keys(profileData).forEach((key) => {
+        if (
+          allowedProfileFields.includes(key) &&
+          profileData[key] !== undefined
+        ) {
+          filteredProfileData[key] = profileData[key];
+        }
+      });
+
+      const targetRole = userUpdateData.role || user.role;
+
+      if (Object.keys(filteredProfileData).length > 0) {
+        if (targetRole === "teacher") {
+          await TeacherProfile.findOneAndUpdate(
+            { user: userId },
+            { $set: filteredProfileData },
+            { returnDocument: "after", runValidators: true, upsert: true },
+          );
+        } else if (targetRole === "student") {
+          await StudentProfile.findOneAndUpdate(
+            { user: userId },
+            { $set: filteredProfileData },
+            { returnDocument: "after", runValidators: true, upsert: true },
+          );
+        }
+      }
     }
 
     res.status(200).json({
@@ -183,7 +268,7 @@ const adminUpdateUser = async (req, res) => {
       message: "User and profile datasets updated successfully",
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

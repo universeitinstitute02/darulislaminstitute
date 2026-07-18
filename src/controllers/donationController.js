@@ -86,27 +86,59 @@ const getAdminCampaigns = async (req, res) => {
 // Update Campaign (Admin Only)
 const updateCampaign = async (req, res) => {
   try {
-    const { title, description, image, goalAmount, isActive } = req.body;
-    const campaign = await DonationCampaign.findById(req.params.id);
+    let bodyData = req.body;
+    if (typeof req.body === "string") {
+      try {
+        bodyData = JSON.parse(req.body);
+      } catch (e) {
+        bodyData = {};
+      }
+    }
 
+    if (!bodyData && !req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Payload data or file not found.",
+      });
+    }
+
+    const { title, description, goalAmount, isActive } = bodyData;
+
+    const campaign = await DonationCampaign.findById(req.params.id);
     if (!campaign) {
       return res.status(404).json({ message: "Donation campaign not found" });
     }
 
-    let updateData = { description, image, goalAmount, isActive };
+    let currentImage = campaign.image;
+    if (req.file) {
+      currentImage = req.file.path || req.file.location || currentImage;
+    } else if (bodyData.image) {
+      currentImage = bodyData.image;
+    }
 
-    if (title && title !== campaign.title) {
+    let updateData = {
+      description: description || campaign.description,
+      image: currentImage,
+      goalAmount: goalAmount !== undefined ? goalAmount : campaign.goalAmount,
+      isActive: isActive !== undefined ? isActive : campaign.isActive,
+    };
+
+    if (title && title.trim() !== campaign.title) {
       const slug = title
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9\u0980-\u09ff]+/g, "-");
-      const existingCampaign = await DonationCampaign.findOne({ slug });
+
+      const existingCampaign = await DonationCampaign.findOne({
+        slug,
+        _id: { $ne: req.params.id },
+      });
       if (existingCampaign) {
         return res
           .status(400)
           .json({ message: "A campaign with a similar title already exists" });
       }
-      updateData.title = title;
+      updateData.title = title.trim();
       updateData.slug = slug;
     }
 
@@ -122,7 +154,7 @@ const updateCampaign = async (req, res) => {
       data: updatedCampaign,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

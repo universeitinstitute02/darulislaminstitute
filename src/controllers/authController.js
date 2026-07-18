@@ -485,6 +485,9 @@ const changePassword = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const userId = req.user._id;
+    if (!req.user || !userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized access" });
+    }
     const user = await User.findById(userId).select("-password").lean();
     if (!user)
       return res.status(404).json({ message: "ইউজার খুঁজে পাওয়া যায়নি।" });
