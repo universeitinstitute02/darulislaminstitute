@@ -10,6 +10,7 @@ const {
   getDonationLogs,
   approveDonation,
   rejectDonation,
+  deleteDonation,
 } = require("../controllers/donationController");
 const { protect, admin } = require("../middlewares/authMiddleware");
 const upload = require("../middlewares/uploadMiddleware");
@@ -27,6 +28,9 @@ router.post("/admin/campaigns", protect, admin, upload.single("image"), createCa
 router.get("/admin/campaigns", protect, admin, getAdminCampaigns);
 router.put("/admin/campaigns/:id", protect, admin, upload.single("image"), updateCampaign);
 router.delete("/admin/campaigns/:id", protect, admin, deleteCampaign);
+
+// delete donations parmanently -
+router.delete("/delete-donation/:id", protect, admin, deleteDonation);
 
 // ==========================================
 // 🔐 ADMIN ROUTES (Donation Logs Handling)

@@ -326,6 +326,29 @@ const rejectDonation = async (req, res) => {
   }
 };
 
+// Delete Donation Permanently
+const deleteDonation = async (req, res) => {
+  try {
+    const donation = await Donation.findById(req.params.id);
+    
+    if (!donation) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Donation entry record not found" 
+      });
+    }
+
+    await donation.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "Donation log tracking entry permanently deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createCampaign,
   getPublicCampaigns,
@@ -336,4 +359,5 @@ module.exports = {
   getDonationLogs,
   approveDonation,
   rejectDonation,
+  deleteDonation,
 };

@@ -2,10 +2,9 @@ const mongoose = require("mongoose");
 
 const testimonialSchema = new mongoose.Schema(
   {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true,
-      ref: "User", // Links to the author who wrote it
+    reviewerName: {
+      type: String,
+      required: [true, "Please add the reviewer name"],
     },
     text: {
       type: String,
@@ -27,6 +26,14 @@ const testimonialSchema = new mongoose.Schema(
       required: [true, "Please specify the author user type"],
       enum: ["student", "teacher", "female_teacher", "parent"],
       default: "student",
+    },
+    courseName: {
+      type: String,
+      default: "",
+    },
+    batchName: {
+      type: String,
+      default: "",
     },
     isApproved: {
       type: Boolean,

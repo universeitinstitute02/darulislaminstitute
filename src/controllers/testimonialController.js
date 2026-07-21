@@ -1,21 +1,24 @@
 const Testimonial = require("../models/Testimonial");
 
-// Create Testimonial (User/Public Submission)
 const createTestimonial = async (req, res) => {
   try {
-    const { text, rating, userType } = req.body;
+    const { reviewerName, text, rating, userType, courseName, batchName } =
+      req.body;
 
     let identityImage = null;
     if (req.file) {
-      identityImage = req.file.path || req.file.filename;
+      identityImage = req.file.path || req.file.location || req.file.filename;
     }
 
     const testimonial = await Testimonial.create({
-      user: req.user._id,
+      reviewerName,
       text,
-      rating,
-      userType: userType || "student", // Default falls back to student
+      rating: Number(rating) || 5,
+      userType: userType || "student",
+      courseName: userType === "student" ? courseName : "",
+      batchName: userType === "student" ? batchName : "",
       identityImage,
+      isApproved: true,
     });
 
     res.status(201).json({ success: true, data: testimonial });
@@ -24,15 +27,11 @@ const createTestimonial = async (req, res) => {
   }
 };
 
-// Get All Approved Testimonials with Query Filters (Public Dedicated Page)
 const getPublicTestimonials = async (req, res) => {
   try {
     const { userType, rating } = req.query;
-
-    // strictly filter for approved items
     const queryCondition = { isApproved: true };
 
-    // Dynamix Query Filtering
     if (userType) {
       queryCondition.userType = userType;
     }
@@ -40,9 +39,9 @@ const getPublicTestimonials = async (req, res) => {
       queryCondition.rating = Number(rating);
     }
 
-    const testimonials = await Testimonial.find(queryCondition)
-      .populate("user", "name profileImage")
-      .sort({ createdAt: -1 }); // Newest first
+    const testimonials = await Testimonial.find(queryCondition).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({ success: true, data: testimonials });
   } catch (error) {
@@ -50,7 +49,6 @@ const getPublicTestimonials = async (req, res) => {
   }
 };
 
-// Get All Testimonials with Server Side Filters (Admin Control Panel)
 const getAdminTestimonials = async (req, res) => {
   try {
     const { userType, isApproved } = req.query;
@@ -59,9 +57,9 @@ const getAdminTestimonials = async (req, res) => {
     if (userType) queryCondition.userType = userType;
     if (isApproved) queryCondition.isApproved = isApproved === "true";
 
-    const testimonials = await Testimonial.find(queryCondition)
-      .populate("user", "name email role phone")
-      .sort({ createdAt: -1 });
+    const testimonials = await Testimonial.find(queryCondition).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({ success: true, data: testimonials });
   } catch (error) {
@@ -69,7 +67,6 @@ const getAdminTestimonials = async (req, res) => {
   }
 };
 
-// Update Testimonial Status (Admin)
 const updateApprovalStatus = async (req, res) => {
   try {
     const { isApproved } = req.body;
@@ -92,7 +89,6 @@ const updateApprovalStatus = async (req, res) => {
   }
 };
 
-// DELETE Testimonial (Admin)
 const deleteTestimonial = async (req, res) => {
   try {
     const testimonial = await Testimonial.findById(req.params.id);

@@ -115,10 +115,10 @@ const getEducationPageData = async (req, res) => {
     // 3. Fetch Upcoming Batches corresponding only to the filtered/searched courses
     const allUpcomingBatches = await Batch.find({
       course: { $in: courseIds },
-      status: "upcoming",
+      status: { $in: ["upcoming", "active", "completed"] },
     })
       .select(
-        "course batchName maxSeats availableSeats admissionStartDate classStartDate status",
+        "course batchName maxSeats availableSeats admissionStartDate classStartDate status enrolledStudents",
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -211,6 +211,8 @@ const getEducationPageData = async (req, res) => {
             image: c.image,
             details: c.details || {},
             upcomingBatch: matchedBatch || null,
+            modules: c.modules || [],
+            enrolledStudents: matchedBatch ? matchedBatch.enrolledStudents : [],
           };
         }),
       };

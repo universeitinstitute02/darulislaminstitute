@@ -15,6 +15,20 @@ const createEnrollmentRequest = async (req, res) => {
       amountPaid,
     } = req.body;
 
+    const alreadyApplied = await Enrollment.findOne({
+      student: req.user._id,
+      course: courseId,
+      status: { $in: ["pending", "approved"] },
+    });
+
+    if (alreadyApplied) {
+      return res
+        .status(400)
+        .json({
+          message: "আপনি অলরেডি এই কোর্সে এনরোলমেন্টের জন্য আবেদন করেছেন!",
+        });
+    }
+
     const txExists = await Enrollment.findOne({
       "paymentDetails.transactionId": transactionId,
     });
@@ -301,13 +315,15 @@ const deleteEnrollment = async (req, res) => {
 
     const enrollment = await Enrollment.findById(id);
     if (!enrollment) {
-      return res.status(404).json({ success: false, message: "Enrollment record not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Enrollment record not found" });
     }
 
     if (enrollment.batch) {
       const Batch = require("../models/Batch");
       await Batch.findByIdAndUpdate(enrollment.batch, {
-        $pull: { enrolledStudents: enrollment.student }
+        $pull: { enrolledStudents: enrollment.student },
       });
     }
 
@@ -315,7 +331,7 @@ const deleteEnrollment = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Enrollment revoked and student removed from batch successfully"
+      message: "Enrollment revoked and student removed from batch successfully",
     });
   } catch (error) {
     console.error("Delete Enrollment Backend Error ->", error);
